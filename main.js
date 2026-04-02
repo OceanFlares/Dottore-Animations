@@ -13,7 +13,7 @@ let currentAnimation = 'Standby';
 const animations = {
   Alert: () => playGroup("Alert"),
   Standby: () => playGroup("Standby"),
-  Break_AS: () => playGroup("Break")
+  Break: () => playGroup("Break")
 };
 
 init();
@@ -64,6 +64,7 @@ function init() {
 
     mixer = new THREE.AnimationMixer(model);
     clipGroups = groupClips(gltf.animations);
+    playGroup(currentAnimation);
 
     console.log(clipGroups); //debug
 
@@ -100,24 +101,25 @@ function animate() {
 function createPanel() { 
   const panel = new GUI({width: 310});
 
-  const animFolder = panel.addFolder('Animations');
   const timerFolder = panel.addFolder('Timer');
   const controlsFolder = panel.addFolder('Playback');
-
-  for (const [name, fn] of Object.entries(animations)) {
-    animFolder.add({[name]: fn}, name);
-  }
-  animFolder.open();
+  const advancedFolder = panel.addFolder('Advanced');
 
   timerFolder.add({ Pause: () => timer.pause() }, 'Pause');
   timerFolder.add({ Resume: () => timer.resume() }, 'Resume');
-  timerFolder.open();
 
   const playback = { speed: 1 };
   controlsFolder.add(playback, 'speed', 0, 2, 0.01).name('Speed').onChange((v) => {
     if (mixer) mixer.timeScale = v;
   });
+
+  for (const [name, fn] of Object.entries(animations)) {
+    advancedFolder.add({[name]: fn}, name);
+  }
+
+  timerFolder.open();
   controlsFolder.open();
+  advancedFolder.open();
 }
 
 function groupClips (clips) {
@@ -137,6 +139,12 @@ function groupClips (clips) {
 }
 
 function playGroup(name) {
+  if(name == 'Standby Free') {
+    
+  }
+}
+
+function playGroupComponent(name) {
   if (!clipGroups[name]) {
     console.warn(`No animation group: ${name}`);
     return;
