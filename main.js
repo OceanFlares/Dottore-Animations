@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Timer } from './utils/Timer.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+import modelUrl from './assets/Monster_Dotorre.glb';
 
 let scene, renderer, camera, controls;
 let model, skeleton, mixer, timer;
@@ -45,7 +46,7 @@ function init() {
 
   //Model
   const loader = new GLTFLoader();
-  loader.load('assets/Monster_Dotorre.glb', function (gltf) {
+  loader.load(modelUrl, function (gltf) {
 
     model = gltf.scene;
     scene.add(model);
