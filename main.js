@@ -3,7 +3,6 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Timer } from './utils/Timer.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
-import modelUrl from './assets/Monster_Dotorre.glb';
 
 let scene, renderer, camera, controls;
 let model, skeleton, mixer, timer;
@@ -46,7 +45,7 @@ function init() {
 
   //Model
   const loader = new GLTFLoader();
-  loader.load(modelUrl, function (gltf) {
+  loader.load('/Dottore-Animations/Monster_Dotorre.glb', function (gltf) {
 
     model = gltf.scene;
     scene.add(model);
@@ -138,13 +137,14 @@ function groupClips (clips) {
   return groups;
 }
 
-function playGroup(name) {
-  if(name == 'Standby Free') {
-    
-  }
-}
+// function playGroup(name) {
+//   if(name == 'Standby Free') {
 
-function playGroupComponent(name) {
+//   }
+// }
+
+// function playGroupComponent(name) {
+function playGroup(name) {
   if (!clipGroups[name]) {
     console.warn(`No animation group: ${name}`);
     return;
