@@ -1,165 +1,353 @@
-import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { Timer } from './utils/Timer.js';
-import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { Timer } from './utils/Timer.js';
+    import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
-let scene, renderer, camera, controls;
-let model, skeleton, mixer, timer;
+    let scene, renderer, camera, controls;
+    let model, skeleton, mixer, timer;
 
-let clipGroups = {};
-let currentAnimation = 'Standby';
-const animations = {
-  Alert: () => playGroup("Alert"),
-  Standby: () => playGroup("Standby"),
-  Break: () => playGroup("Break")
-};
+    let clipGroups = {};
+    let currentAnimation = 'Standby';
+    const animations = {
+      Alert: () => playGroup("Alert"),
+      Standby: () => playGroup("Standby"),
+      Break: () => playGroup("Break")
+    };
 
-init();
+    let morphMeshes = [];
 
-function init() {
+    let activeActions = [];
+    let activeDuration = 0;
 
-  const container = document.getElementById('container');
-  timer = new Timer();
+    let isPlaying = true;
+    let isScrubbing = false;
+    let currentSpeed = 1;
 
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x3D3D3D);
-  scene.fog = new THREE.Fog(0x333333, 10, 50);
-
-  const light = new THREE.AmbientLight( 0xffffff, 1 );
-  scene.add( light );
-
-  //Renderer
-  renderer = new THREE.WebGLRenderer({antialias: true});
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  container.appendChild(renderer.domElement);
-  renderer.setAnimationLoop(animate);
-
-  //Ground
-  const ground = new THREE.Mesh( new THREE.PlaneGeometry( 100, 100 ), new THREE.MeshPhongMaterial( { color: 0xcbcbcb, depthWrite: false } ) );
-  ground.rotation.x = - Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add( ground );
-
-  //Model
-  const loader = new GLTFLoader();
-  loader.load('/Dottore-Animations/Monster_Dotorre.glb', function (gltf) {
-
-    model = gltf.scene;
-    scene.add(model);
-
-    //Shadows
-    model.traverse(function(object) {
-      if (object.isMesh) object.castShadow = true;
-    } );
-
-    //Skeleton
-    skeleton = new THREE.SkeletonHelper(model);
-    skeleton.visible = false;
-    scene.add(skeleton);
+    const playPauseBtn = document.getElementById("playPause");
 
 
-    mixer = new THREE.AnimationMixer(model);
-    clipGroups = groupClips(gltf.animations);
-    playGroup(currentAnimation);
+    const frameDisplay = document.getElementById("frameDisplay");
+    const FPS = 60;
+    const speedSlider = document.getElementById("speed");
+    const speedNumber = document.getElementById("speedNumber");
 
-    console.log(clipGroups); //debug
+    init();
 
-    createPanel();
+    function init() {
 
-  }, undefined, function(error) {
-    console.error(error);
-  } );
+      const container = document.getElementById('container');
+      const timeline = document.getElementById("timeline");
+      const speedControl = document.getElementById("speed");
 
-  // camera
-  camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.01, 100);
-  camera.position.set(-1, 2, 3);
+      setSpeed(1);
 
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.target.set(0, 1, 0);
-  controls.update();
+      timer = new Timer();
 
-  window.addEventListener('resize', onWindowResize);
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x3D3D3D);
+      scene.fog = new THREE.Fog(0x333333, 10, 50);
 
-}
+      const light = new THREE.AmbientLight( 0xffffff, 1 );
+      scene.add( light );
 
-function animate() {
-  timer.update();
-  controls.update();
+      //Renderer
+      renderer = new THREE.WebGLRenderer({antialias: true});
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      container.appendChild(renderer.domElement);
+      renderer.setAnimationLoop(animate);
+      
+      renderer.domElement.tabIndex = 0;
+      renderer.domElement.style.outline = "none";
+      renderer.domElement.focus();
 
-  const delta = timer.getDelta();
+      window.addEventListener("click", () => {
+        renderer.domElement.focus();
+      });
 
-  if (mixer) mixer.update(delta);
+      //Ground
+      const ground = new THREE.Mesh( new THREE.PlaneGeometry( 100, 100 ), new THREE.MeshPhongMaterial( { color: 0xcbcbcb, depthWrite: false } ) );
+      ground.rotation.x = - Math.PI / 2;
+      ground.receiveShadow = true;
+      scene.add( ground );
 
-  renderer.render(scene, camera);
-}
+      //Model
+      const loader = new GLTFLoader();
+      loader.load('/Dottore-Animations/Monster_Dotorre.glb', function (gltf) {
 
-function createPanel() { 
-  const panel = new GUI({width: 310});
+        model = gltf.scene;
+        scene.add(model);
 
-  const timerFolder = panel.addFolder('Timer');
-  const controlsFolder = panel.addFolder('Playback');
-  const advancedFolder = panel.addFolder('Advanced');
+        model.traverse((obj) => {
+          if (obj.isMesh) {
+            obj.frustumCulled = false;
+          }
+        });
 
-  timerFolder.add({ Pause: () => timer.pause() }, 'Pause');
-  timerFolder.add({ Resume: () => timer.resume() }, 'Resume');
+        //Shadows
+        model.traverse(function(object) {
+          if (object.isMesh) object.castShadow = true;
+        } );
 
-  const playback = { speed: 1 };
-  controlsFolder.add(playback, 'speed', 0, 2, 0.01).name('Speed').onChange((v) => {
-    if (mixer) mixer.timeScale = v;
-  });
+        //Skeleton
+        skeleton = new THREE.SkeletonHelper(model);
+        skeleton.visible = false;
+        scene.add(skeleton);
 
-  for (const [name, fn] of Object.entries(animations)) {
-    advancedFolder.add({[name]: fn}, name);
-  }
+        mixer = new THREE.AnimationMixer(model);
+        clipGroups = groupClips(gltf.animations);
+        playGroup(currentAnimation);
 
-  timerFolder.open();
-  controlsFolder.open();
-  advancedFolder.open();
-}
+        model.traverse((obj) => {
+          if (obj.isMesh && obj.morphTargetInfluences) {
+            morphMeshes.push(obj);
+            console.log(obj.name, obj.morphTargetDictionary);
+          }
+        });
 
-function groupClips (clips) {
-  const groups = {};
+        createPanel();
 
-  clips.forEach((clip) => {
-    const baseName = clip.name.split('_')[0];
+      }, undefined, function(error) {
+        console.error(error);
+      } );
 
-    if (!groups[baseName]) {
-      groups[baseName] = [];
+      // camera
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 500);
+      camera.updateProjectionMatrix();
+      camera.position.set(-1, 2, 3);
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.target.set(0, 1, 0);
+      controls.update();
+
+      //Timeline
+      timeline.addEventListener("input", () => {
+        if (!mixer || activeActions.length === 0) return;
+        isScrubbing = true;
+
+        const t = (timeline.value / 100) * activeDuration;
+        
+        activeActions.forEach(action => {
+          action.time = t;
+        });
+      });
+
+      timeline.addEventListener("change", () => {
+        isScrubbing = false;
+      });
+
+      playPauseBtn.addEventListener("click", () => { togglePlayPause() });
+
+      speedControl.addEventListener("input", () => {
+        if (mixer) mixer.timeScale = parseFloat(speedControl.value);
+      });
+
+      window.addEventListener('resize', onWindowResize);
+
+      speedSlider.addEventListener("input", () => {
+        setSpeed(parseFloat(speedSlider.value));
+      });
+
+      speedNumber.addEventListener("input", () => {
+          const v = parseFloat(speedNumber.value);
+          if (Number.isFinite(v)) {
+            setSpeed(v);
+          }
+      });
+
+      speedNumber.addEventListener("blur", () => {
+        if (speedNumber.value === "") {
+          speedNumber.value = currentSpeed;
+        }
+      });
+
+      window.addEventListener("keydown", onKeyDown);
     }
 
-    groups[baseName].push(clip);
-  });
+    function animate() {
+      timer.update();
+      controls.update();
 
-  return groups;
-}
+      const delta = timer.getDelta();
 
-// function playGroup(name) {
-//   if(name == 'Standby Free') {
+      if (mixer) {
+        mixer.update(delta);
+      }
+      
+      updateTimelineAndFrame();
+      renderer.render(scene, camera);
+    }
 
-//   }
-// }
+    function createPanel() { 
+      const panel = new GUI({width: 310});
 
-// function playGroupComponent(name) {
-function playGroup(name) {
-  if (!clipGroups[name]) {
-    console.warn(`No animation group: ${name}`);
-    return;
-  }
+      const stateFolder = panel.addFolder("States");
+      const individualAnimations = panel.addFolder('Individual Animations');
+      const morphFolder = panel.addFolder("Facial Expressions");
 
-  mixer.stopAllAction();
+      //Individual Animations
+      for (const [name, fn] of Object.entries(animations)) {
+        individualAnimations.add({[name]: fn}, name);
+      }
 
-  clipGroups[name].forEach((clip) => {
-    const action = mixer.clipAction(clip);
-    action.reset().play();
-  });
-}
+      //Facial Expressions
+      const mesh = morphMeshes[0];
+      const dict = mesh.morphTargetDictionary;
 
-function onWindowResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-}
+      Object.keys(dict).forEach((key) => {
+        const index = dict[key];
+
+        const control = { value: mesh.morphTargetInfluences[index] };
+
+        morphFolder.add(control, "value", 0, 1, 0.01)
+          .name(key)
+          .onChange((v) => {
+            morphMeshes.forEach(m => {
+              m.morphTargetInfluences[index] = v;
+            });
+          });
+      });
+
+      advancedFolder.open();
+    }
+
+    function groupClips (clips) {
+      const groups = {};
+
+      clips.forEach((clip) => {
+        const baseName = clip.name.split('_')[0];
+
+        if (!groups[baseName]) {
+          groups[baseName] = [];
+        }
+
+        groups[baseName].push(clip);
+      });
+
+      return groups;
+    }
+
+    // function playGroup(name) {
+    //   if(name == 'Standby Free') {
+
+    //   }
+    // }
+
+    // function playGroupComponent(name) {
+    function playGroup(name) {
+      if (!clipGroups[name]) return;
+
+      activeActions.forEach(action => {
+        action.enabled = false;
+        action.stop();
+      });
+
+      activeActions = [];
+      activeDuration = 0;
+
+      clipGroups[name].forEach((clip) => {
+        const action = mixer.clipAction(clip);
+
+        action.reset();
+        action.setLoop(THREE.LoopRepeat);
+        action.clampWhenFinished = false;
+        action.enabled = true;
+        action.play();
+
+        activeActions.push(action);
+        activeDuration = Math.max(activeDuration, clip.duration);
+      });
+    }
+
+    // function setMorph(name, value) {
+    //   morphMeshes.forEach(mesh => {
+    //     const dict = mesh.morphTargetDictionary;
+    //     if (dict && dict[name] !== undefined) {
+    //       mesh.morphTargetInfluences[dict[name]] = value;
+    //     }
+    //   });
+    // }
+
+    function togglePlayPause() {
+      isPlaying = !isPlaying;
+      
+      mixer.timeScale = isPlaying ? currentSpeed : 0;
+
+      playPauseBtn.textContent = isPlaying ? "Pause" : "Play";
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function setSpeed(v) {
+      if (!Number.isFinite(v)) return;
+      currentSpeed = v;
+
+      speedSlider.value = v;
+      speedNumber.value = v;
+
+      if (mixer && isPlaying) {
+        mixer.timeScale = v;
+      }
+    }
+
+    function stepFrame(direction) {
+      const frameTime = 1 / FPS;
+
+      activeActions.forEach(action => {
+        let newTime = action.time + direction * frameTime;
+        const duration = action.getClip().duration;
+
+        action.time = (newTime % duration + duration) % duration;
+      });
+
+      updateTimelineAndFrame();
+    }
+
+    function updateTimelineAndFrame() {
+      if (!activeActions.length) return;
+
+      const t = activeActions[0].time;
+      const currentFrame = Math.floor(t * FPS);
+
+      frameDisplay.textContent = `Frame: ${currentFrame}`;
+      timeline.value = (t / activeDuration) * 100;
+    }
+
+    function onKeyDown(e) {
+      if (!mixer || activeActions.length === 0) return;
+
+      switch (e.code) {
+
+        case "Space":
+          e.preventDefault();
+          togglePlayPause();
+          break;
+
+        case "ArrowRight":
+          e.preventDefault();
+          stepFrame(1);
+          break;
+
+        case "ArrowLeft":
+          e.preventDefault();
+          stepFrame(-1);
+          break;
+
+        case "ArrowUp":
+          e.preventDefault();
+          setSpeed((currentSpeed * 10 + 1) / 10);
+          break;
+
+        case "ArrowDown":
+          e.preventDefault();
+          setSpeed((currentSpeed * 10 - 1) / 10);
+          break;
+      }
+    }
